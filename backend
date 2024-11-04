@@ -1,0 +1,65 @@
+// app.js (Node.js + Express Backend)
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const axios = require('axios');
+const firebaseAdmin = require('firebase-admin'); // for Firebase integration
+const { MongoClient } = require('mongodb'); // for MongoDB if chosen
+
+const app = express();
+app.use(bodyParser.json());
+
+// Initialize Firebase and/or MongoDB connections here
+firebaseAdmin.initializeApp({
+  credential: firebaseAdmin.credential.applicationDefault(),
+});
+
+const dbClient = new MongoClient('mongodb_connection_string'); // Replace with your MongoDB URI
+dbClient.connect().then(() => console.log('Connected to MongoDB'));
+
+app.post('/upload-photo', async (req, res) => {
+  const { imageUrl } = req.body;
+  try {
+    const ocrResponse = await axios.post('OCR_API_URL', { image: imageUrl });
+    const detectedText = ocrResponse.data.text;
+    res.json({ detectedText });
+  } catch (error) {
+    res.status(500).json({ error: 'OCR processing failed.' });
+  }
+});
+
+app.get('/define-word', async (req, res) => {
+  const { word } = req.query;
+  try {
+    const dictionaryResponse = await axios.get(`DICTIONARY_API_URL/${word}`);
+    res.json(dictionaryResponse.data);
+  } catch (error) {
+    res.status(500).json({ error: 'Dictionary lookup failed.' });
+  }
+});
+
+app.post('/create-flashcard', async (req, res) => {
+  const { userId, word, definition, synonyms } = req.body;
+  const newFlashcard = { userId, word, definition, synonyms };
+
+  try {
+    const collection = dbClient.db('appDatabase').collection('flashcards');
+    await collection.insertOne(newFlashcard);
+    res.json({ message: 'Flashcard saved!' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error saving flashcard.' });
+  }
+});
+
+app.get('/get-flashcards', async (req, res) => {
+  const { userId } = req.query;
+  try {
+    const collection = dbClient.db('appDatabase').collection('flashcards');
+    const flashcards = await collection.find({ userId }).toArray();
+    res.json(flashcards);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching flashcards.' });
+  }
+});
+
+app.listen(3000, () => console.log('Server is running on port 3000'));
